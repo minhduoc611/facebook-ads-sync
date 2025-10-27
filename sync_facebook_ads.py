@@ -137,7 +137,7 @@ TABLES = {
         "query": f"""
             SELECT *
             FROM `{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`
-            WHERE PARSE_DATE('%Y-%m-%d', date_start) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+            WHERE date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
             ORDER BY date_start DESC
         """,
         "converter": lambda row: {
