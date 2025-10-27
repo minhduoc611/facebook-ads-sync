@@ -261,33 +261,34 @@ def sync_table(name, config, client, token):
     created = write_to_lark_base(token, LARK_APP_TOKEN, config["table_id"], results, config["converter"])
     print(f"Created {created}/{len(results)} records")
 
-print("="*60)
-print("FACEBOOK ADS SYNC - ALL TABLES")
-print("="*60)
-
-print("\nConnecting to BigQuery...")
-client = bigquery.Client(project=BQ_PROJECT)
-
-print("Connecting to Lark Base...")
-token = get_lark_token(LARK_APP_ID, LARK_APP_SECRET)
-
-if not token:
-    print("Failed to get Lark token")
-    exit(1)
-
-print("Connected successfully")
-
-start_time = datetime.now()
-
-for name, config in TABLES.items():
-    sync_table(name, config, client, token)
-
-end_time = datetime.now()
-duration = (end_time - start_time).total_seconds()
-
-print(f"\n{'='*60}")
-print("ALL TABLES COMPLETED!")
-print(f"{'='*60}")
-print(f"Total duration: {duration:.2f}s ({duration/60:.2f}min)")
-print(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-print(f"{'='*60}")
+if __name__ == "__main__":
+    print("="*60)
+    print("FACEBOOK ADS SYNC - ALL TABLES")
+    print("="*60)
+    
+    print("\nConnecting to BigQuery...")
+    client = bigquery.Client(project=BQ_PROJECT)
+    
+    print("Connecting to Lark Base...")
+    token = get_lark_token(LARK_APP_ID, LARK_APP_SECRET)
+    
+    if not token:
+        print("Failed to get Lark token")
+        exit(1)
+    
+    print("Connected successfully")
+    
+    start_time = datetime.now()
+    
+    for name, config in TABLES.items():
+        sync_table(name, config, client, token)
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
+    print(f"\n{'='*60}")
+    print("ALL TABLES COMPLETED!")
+    print(f"{'='*60}")
+    print(f"Total duration: {duration:.2f}s ({duration/60:.2f}min)")
+    print(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}")
