@@ -1,0 +1,34 @@
+name: Sync Facebook Ads to Lark Base
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install google-cloud-bigquery requests
+      
+      - name: Set up GCP credentials
+        run: |
+          echo '${{ secrets.GCP_USER_CREDENTIALS }}' > /tmp/gcp_creds.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp_creds.json
+      
+      - name: Run sync script
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_creds.json
+        run: |
+          python sync_facebook_ads.py
