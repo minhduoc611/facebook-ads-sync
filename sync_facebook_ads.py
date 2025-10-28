@@ -177,14 +177,14 @@ TABLES = {
             LIMIT 1000
         """,
         "converter": lambda row: {
-            "ID tài khoản": str(row.account_id or ""),
-            "Tên tài khoản": str(row.name or ""),
-            "Loại tiền tệ": str(row.currency or ""),
-            "Chi tiêu": float(row.balance or 0),
-            "Trạng thái tài khoản": str(row.account_status or ""),
-            "Tổng chi tiêu": float(row.amount_spent or 0),
+            "Account ID": str(row.account_id or ""),
+            "Name": str(row.name or ""),
+            "Currency": str(row.currency or ""),
+            "Balance": float(row.balance or 0),
+            "Account Status": str(row.account_status or ""),
+            "Amount Spent": float(row.amount_spent or 0),
         },
-        "key_field": "ID tài khoản",
+        "key_field": "Account ID",
         "update_mode": True
     }
 }
@@ -212,9 +212,13 @@ def get_existing_records(token, app_token, table_id, key_field):
         result = response.json()
         
         if result.get("code") != 0:
+            print(f"Warning: API returned code {result.get('code')}: {result.get('msg', 'Unknown error')}")
             break
         
-        items = result.get("data", {}).get("items", [])
+        items = result.get("data", {}).get("items")
+        if items is None:
+            items = []
+        
         for item in items:
             key_value = item.get("fields", {}).get(key_field)
             if key_value:
