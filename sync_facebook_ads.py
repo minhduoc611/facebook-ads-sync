@@ -162,6 +162,30 @@ TABLES = {
             "Ngày bắt đầu": int(datetime.strptime(str(row.date_start), '%Y-%m-%d').timestamp() * 1000) if row.date_start else None,
             "Ngày kết thúc": int(datetime.strptime(str(row.date_stop), '%Y-%m-%d').timestamp() * 1000) if row.date_stop else None,
         }
+    },
+    "ad_accounts": {
+        "table_id": "tblhkPef4KZKdUyp",
+        "query": f"""
+            SELECT 
+                account_id, 
+                name, 
+                currency, 
+                balance, 
+                account_status, 
+                amount_spent 
+            FROM `{BQ_PROJECT}.{BQ_DATASET}.ad_accounts`
+            LIMIT 1000
+        """,
+        "converter": lambda row: {
+            "ID tài khoản": str(row.account_id or ""),
+            "Tên tài khoản": str(row.name or ""),
+            "Loại tiền tệ": str(row.currency or ""),
+            "Chi tiêu": float(row.balance or 0),
+            "Trạng thái tài khoản": str(row.account_status or ""),
+            "Tổng chi tiêu": float(row.amount_spent or 0),
+        },
+        "key_field": "ID tài khoản",
+        "update_mode": True
     }
 }
 
@@ -170,6 +194,88 @@ def get_lark_token(app_id, app_secret):
     response = requests.post(url, headers={"Content-Type": "application/json"}, json={"app_id": app_id, "app_secret": app_secret})
     result = response.json()
     return result["tenant_access_token"] if result.get("code") == 0 else None
+
+def get_existing_records(token, app_token, table_id, key_field):
+    list_url = f"https://open.larksuite.com/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    existing_map = {}
+    page_token = None
+    
+    while True:
+        params = {"page_size": 500}
+        if page_token:
+            params["page_token"] = page_token
+        
+        response = requests.get(list_url, headers=headers, params=params)
+        result = response.json()
+        
+        if result.get("code") != 0:
+            break
+        
+        items = result.get("data", {}).get("items") or []
+        for item in items:
+            key_value = item.get("fields", {}).get(key_field)
+            if key_value:
+                existing_map[str(key_value)] = item.get("record_id")
+        
+        page_token = result.get("data", {}).get("page_token")
+        if not page_token or not result.get("data", {}).get("has_more"):
+            break
+    
+    return existing_map
+
+def upsert_to_lark_base(token, app_token, table_id, records, converter, key_field):
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    
+    if not records:
+        return 0, 0
+    
+    existing_map = get_existing_records(token, app_token, table_id, key_field)
+    records_to_create = []
+    records_to_update = []
+    
+    for row in records:
+        try:
+            fields = converter(row)
+            fields = {k: v for k, v in fields.items() if v is not None}
+            key_value = str(fields.get(key_field, ""))
+            
+            if not key_value:
+                continue
+            
+            if key_value in existing_map:
+                records_to_update.append({"record_id": existing_map[key_value], "fields": fields})
+            else:
+                records_to_create.append({"fields": fields})
+        except:
+            continue
+    
+    created_count = 0
+    updated_count = 0
+    
+    if records_to_create:
+        create_url = f"https://open.larksuite.com/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create"
+        
+        def create_batch(batch):
+            response = requests.post(create_url, headers=headers, json={"records": batch})
+            return len(batch) if response.json().get("code") == 0 else 0
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            batches = [records_to_create[i:i+BATCH_SIZE] for i in range(0, len(records_to_create), BATCH_SIZE)]
+            created_count = sum(executor.map(create_batch, batches))
+    
+    if records_to_update:
+        update_url = f"https://open.larksuite.com/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_update"
+        
+        def update_batch(batch):
+            response = requests.post(update_url, headers=headers, json={"records": batch})
+            return len(batch) if response.json().get("code") == 0 else 0
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            batches = [records_to_update[i:i+BATCH_SIZE] for i in range(0, len(records_to_update), BATCH_SIZE)]
+            updated_count = sum(executor.map(update_batch, batches))
+    
+    return created_count, updated_count
 
 def delete_all_records(token, app_token, table_id):
     list_url = f"https://open.larksuite.com/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records"
@@ -253,13 +359,16 @@ def sync_table(name, config, client, token):
         print("No data found")
         return
     
-    print("Deleting old data...")
-    deleted = delete_all_records(token, LARK_APP_TOKEN, config["table_id"])
-    print(f"Deleted {deleted} records")
-    
-    print("Creating new data...")
-    created = write_to_lark_base(token, LARK_APP_TOKEN, config["table_id"], results, config["converter"])
-    print(f"Created {created}/{len(results)} records")
+    if config.get("update_mode") and config.get("key_field"):
+        print(f"Using UPDATE/CREATE mode with key field: {config['key_field']}")
+        created, updated = upsert_to_lark_base(token, LARK_APP_TOKEN, config["table_id"], results, config["converter"], config["key_field"])
+        print(f"Created: {created}, Updated: {updated}")
+    else:
+        print("Using DELETE & RECREATE mode")
+        deleted = delete_all_records(token, LARK_APP_TOKEN, config["table_id"])
+        print(f"Deleted {deleted} records")
+        created = write_to_lark_base(token, LARK_APP_TOKEN, config["table_id"], results, config["converter"])
+        print(f"Created {created}/{len(results)} records")
 
 print("="*60)
 print("FACEBOOK ADS SYNC - ALL TABLES")
