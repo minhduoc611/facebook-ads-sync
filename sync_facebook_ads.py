@@ -137,7 +137,7 @@ TABLES = {
         "query": f"""
             SELECT *
             FROM `{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`
-            WHERE PARSE_DATE('%Y-%m-%d', date_start) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+            WHERE date_start >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
             ORDER BY date_start DESC
         """,
         "converter": lambda row: {
@@ -177,14 +177,14 @@ TABLES = {
             LIMIT 1000
         """,
         "converter": lambda row: {
-            "Account ID": str(row.account_id or ""),
-            "Name": str(row.name or ""),
-            "Currency": str(row.currency or ""),
-            "Balance": float(row.balance or 0),
-            "Account Status": str(row.account_status or ""),
-            "Amount Spent": float(row.amount_spent or 0),
+            "ID tài khoản": str(row.account_id or ""),
+            "Tên tài khoản": str(row.name or ""),
+            "Loại tiền tệ": str(row.currency or ""),
+            "Chi tiêu": float(row.balance or 0),
+            "Trạng thái tài khoản": str(row.account_status or ""),
+            "Tổng chi tiêu": float(row.amount_spent or 0),
         },
-        "key_field": "Account ID",
+        "key_field": "ID tài khoản",
         "update_mode": True
     }
 }
@@ -370,7 +370,7 @@ def sync_table(name, config, client, token):
         return
     
     # Check if this table uses update mode
-    if config.get("update_mode", False):
+    if config.get("update_mode") == True and config.get("key_field"):
         key_field = config.get("key_field")
         print(f"Using UPDATE/CREATE mode with key field: {key_field}")
         created, updated = upsert_to_lark_base(token, LARK_APP_TOKEN, config["table_id"], results, config["converter"], key_field)
